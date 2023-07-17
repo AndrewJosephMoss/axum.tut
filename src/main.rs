@@ -1,47 +1,30 @@
 use std::net::SocketAddr;
 
-use axum::extract::Path;
-use axum::extract::Query;
-use axum::response::{Html, IntoResponse};
-use axum::routing::get;
+use axum::routing::get_service;
 use axum::Router;
-use serde::Deserialize;
+use tower_http::services::ServeDir;
+
+mod error;
+pub use self::error::{Error, Result};
+mod web;
+pub use self::web::routes_hello;
+pub use self::web::routes_login;
 
 #[tokio::main]
 async fn main() {
-    let routes_hello = Router::new()
-        .route("/hello-world", get(handler_hello_query))
-        .route("/hello-world/:name", get(handler_hello_path));
+    let routes_all = Router::new()
+        .merge(routes_hello::routes())
+        .merge(routes_login::routes())
+        .fallback_service(routes_static());
+
     let addr = SocketAddr::from(([127, 0, 0, 1], 8080));
     println!("->> LISTENING on {addr}\n");
     axum::Server::bind(&addr)
-        .serve(routes_hello.into_make_service())
+        .serve(routes_all.into_make_service())
         .await
         .unwrap();
 }
 
-#[derive(Debug, Deserialize)]
-struct HelloParams {
-    name: Option<String>,
-}
-
-async fn handler_hello_query(Query(params): Query<HelloParams>) -> impl IntoResponse {
-    println!(
-        "->> {:<12} - handler_hello query param - {params:?}",
-        "HANDLER"
-    );
-
-    let name = params.name.as_deref().unwrap_or("World!!");
-    let resp = format!("Hello <strong>{name}!!</strong>");
-    Html(resp)
-}
-
-async fn handler_hello_path(Path(name): Path<String>) -> impl IntoResponse {
-    println!(
-        "->> {:<12} - handler_hello path variable - {name}",
-        "HANDLER"
-    );
-
-    let resp = format!("Hello path param <strong>{name}</strong>");
-    Html(resp)
+fn routes_static() -> Router {
+    Router::new().nest_service("/", get_service(ServeDir::new("./")))
 }
