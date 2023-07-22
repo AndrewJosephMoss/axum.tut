@@ -14,15 +14,18 @@ pub use self::web::routes_hello;
 pub use self::web::routes_login;
 use crate::model::ModelController;
 use crate::web::routes_tickets;
+use crate::web::mw_auth;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let model_controller = ModelController::new().await?;
 
+    let routes_api = routes_tickets::routes(model_controller.clone()).route_layer(middleware::from_fn(mw_auth::mw_require_auth));
+
     let routes_all = Router::new()
         .merge(routes_hello::routes())
         .merge(routes_login::routes())
-        .nest("/api", routes_tickets::routes(model_controller.clone()))
+        .nest("/api", routes_api)
         .layer(middleware::map_response(main_response_mapper))
         .layer(CookieManagerLayer::new())
         .fallback_service(routes_static());

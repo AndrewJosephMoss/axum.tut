@@ -1,5 +1,5 @@
 use crate::model::{ModelController, Ticket, TicketIn};
-use crate::{Error, Result};
+use crate::{Result};
 use axum::extract::Path;
 use axum::routing::{delete, get, post};
 use axum::Router;
