@@ -3,12 +3,15 @@ use std::net::SocketAddr;
 use axum::response::Response;
 use axum::routing::get_service;
 use axum::{middleware, Router};
+use serde_json::json;
 use tower_cookies::CookieManagerLayer;
 use tower_http::services::ServeDir;
+use uuid::Uuid;
 
 mod error;
 mod model;
 mod web;
+mod ctx;
 pub use self::error::{Error, Result};
 pub use self::web::routes_hello;
 pub use self::web::routes_login;
@@ -27,6 +30,7 @@ async fn main() -> Result<()> {
         .merge(routes_login::routes())
         .nest("/api", routes_api)
         .layer(middleware::map_response(main_response_mapper))
+        .layer(middleware::from_fn_with_state(model_controller.clone(), web::mw_auth::mw_ctx_resolver))
         .layer(CookieManagerLayer::new())
         .fallback_service(routes_static());
 
@@ -42,7 +46,26 @@ async fn main() -> Result<()> {
 
 async fn main_response_mapper(res: Response) -> Response {
     println!("->> {:<12} - main_response_mapper", "RES_MAPPER");
-    res
+    let uuid = Uuid::new_v4();
+
+    // -- Get the eventual response error.
+    let service_error = res.extensions().get::<Error>();
+    let client_status_error = service_error.map(|service_error| service_error.client_status_and_error());
+    
+
+    // -- If client error, build the new response
+    let error_response = client_status_error
+        .as_ref()
+        .map(|(status_code, client_error)| {
+            let client_error_body = json!({
+                "error": {
+                    "type": client_error.as_ref(),
+                    "req_uuid": uuid.to_string(),
+                }
+            });
+        });
+
+    todo!()
 }
 
 fn routes_static() -> Router {

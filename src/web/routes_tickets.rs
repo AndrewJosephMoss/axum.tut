@@ -1,3 +1,4 @@
+use crate::ctx::Ctx;
 use crate::model::{ModelController, Ticket, TicketIn};
 use crate::{Result};
 use axum::extract::Path;
@@ -16,25 +17,27 @@ pub fn routes(mc: ModelController) -> Router {
 // region -- REST handlers
 async fn create_ticket(
     State(mc): State<ModelController>,
+    ctx: Ctx,
     Json(ticket_in): Json<TicketIn>,
 ) -> Result<Json<Ticket>> {
     println!("->> {:<12} - create ticket", "HANDLER");
-    let ticket = mc.create_ticket(ticket_in).await?;
+    let ticket = mc.create_ticket(ctx, ticket_in).await?;
     Ok(Json(ticket))
 }
 
-async fn list_tickets(State(mc): State<ModelController>) -> Result<Json<Vec<Ticket>>> {
+async fn list_tickets(State(mc): State<ModelController>, ctx: Ctx) -> Result<Json<Vec<Ticket>>> {
     println!("->> {:<12} - list tickets", "HANDLER");
-    let tickets = mc.list_tickets().await?;
+    let tickets = mc.list_tickets(ctx).await?;
     Ok(Json(tickets))
 }
 
 async fn delete_ticket(
     State(mc): State<ModelController>,
+    ctx: Ctx,
     Path(id): Path<u64>,
 ) -> Result<Json<Ticket>> {
     println!("->> {:<12} - delete ticket", "HANDLER");
-    let ticket = mc.delete_ticket(id).await?;
+    let ticket = mc.delete_ticket(ctx, id).await?;
     Ok(Json(ticket))
 }
 // end region -- REST handlers
