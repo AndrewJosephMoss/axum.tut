@@ -7,17 +7,22 @@ use tower_cookies::CookieManagerLayer;
 use tower_http::services::ServeDir;
 
 mod error;
-pub use self::error::{Error, Result};
+mod model;
 mod web;
+pub use self::error::{Error, Result};
 pub use self::web::routes_hello;
 pub use self::web::routes_login;
-mod model;
+use crate::model::ModelController;
+use crate::web::routes_tickets;
 
 #[tokio::main]
-async fn main() {
+async fn main() -> Result<()> {
+    let model_controller = ModelController::new().await?;
+
     let routes_all = Router::new()
         .merge(routes_hello::routes())
         .merge(routes_login::routes())
+        .nest("/api", routes_tickets::routes(model_controller.clone()))
         .layer(middleware::map_response(main_response_mapper))
         .layer(CookieManagerLayer::new())
         .fallback_service(routes_static());
@@ -28,6 +33,8 @@ async fn main() {
         .serve(routes_all.into_make_service())
         .await
         .unwrap();
+
+    Ok(())
 }
 
 async fn main_response_mapper(res: Response) -> Response {
