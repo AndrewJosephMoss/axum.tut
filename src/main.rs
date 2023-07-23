@@ -1,36 +1,44 @@
 use std::net::SocketAddr;
 
-use axum::response::Response;
+use axum::http::{Method, Uri};
+use axum::response::{IntoResponse, Response};
 use axum::routing::get_service;
-use axum::{middleware, Router};
+use axum::{middleware, Json, Router};
+use ctx::Ctx;
 use serde_json::json;
 use tower_cookies::CookieManagerLayer;
 use tower_http::services::ServeDir;
 use uuid::Uuid;
 
+mod ctx;
 mod error;
+mod log;
 mod model;
 mod web;
-mod ctx;
 pub use self::error::{Error, Result};
 pub use self::web::routes_hello;
 pub use self::web::routes_login;
+use crate::log::log_request;
 use crate::model::ModelController;
-use crate::web::routes_tickets;
 use crate::web::mw_auth;
+use crate::web::routes_tickets;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let model_controller = ModelController::new().await?;
 
-    let routes_api = routes_tickets::routes(model_controller.clone()).route_layer(middleware::from_fn(mw_auth::mw_require_auth));
+    let routes_api = routes_tickets::routes(model_controller.clone())
+        .route_layer(middleware::from_fn(mw_auth::mw_require_auth));
 
     let routes_all = Router::new()
         .merge(routes_hello::routes())
         .merge(routes_login::routes())
         .nest("/api", routes_api)
         .layer(middleware::map_response(main_response_mapper))
-        .layer(middleware::from_fn_with_state(model_controller.clone(), web::mw_auth::mw_ctx_resolver))
+        .layer(middleware::from_fn_with_state(
+            model_controller.clone(),
+            web::mw_auth::mw_ctx_resolver,
+        ))
         .layer(CookieManagerLayer::new())
         .fallback_service(routes_static());
 
@@ -44,14 +52,19 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn main_response_mapper(res: Response) -> Response {
+async fn main_response_mapper(
+    ctx: Option<Ctx>,
+    uri: Uri,
+    req_method: Method,
+    res: Response,
+) -> Response {
     println!("->> {:<12} - main_response_mapper", "RES_MAPPER");
     let uuid = Uuid::new_v4();
 
     // -- Get the eventual response error.
     let service_error = res.extensions().get::<Error>();
-    let client_status_error = service_error.map(|service_error| service_error.client_status_and_error());
-    
+    let client_status_error =
+        service_error.map(|service_error| service_error.client_status_and_error());
 
     // -- If client error, build the new response
     let error_response = client_status_error
@@ -63,9 +76,16 @@ async fn main_response_mapper(res: Response) -> Response {
                     "req_uuid": uuid.to_string(),
                 }
             });
+            println!("    ->> client_error_body: {client_error_body}");
+            (*status_code, Json(client_error_body)).into_response()
         });
 
-    todo!()
+    let client_error = client_status_error.unzip().1;
+    log_request(uuid, req_method, uri, ctx, service_error, client_error);
+
+    println!("    ->> server log line - {uuid} - Error: {service_error:?}");
+
+    error_response.unwrap_or(res)
 }
 
 fn routes_static() -> Router {

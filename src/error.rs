@@ -1,8 +1,10 @@
 use axum::{http::StatusCode, response::IntoResponse};
+use serde::Serialize;
 
 pub type Result<T> = core::result::Result<T, Error>;
 
-#[derive(Debug, Clone, strum_macros::AsRefStr)]
+#[derive(Debug, Clone, strum_macros::AsRefStr, Serialize)]
+#[serde(tag = "type", content = "data")]
 pub enum Error {
     LoginFail,
     AuthFaileNoAuthTokenCookie,
@@ -30,15 +32,18 @@ impl Error {
         match self {
             Error::LoginFail => (StatusCode::FORBIDDEN, ClientError::LOGIN_FAIL),
 
-            Error::AuthFaileNoAuthTokenCookie |
-            Error::AuthFailTokenWrongFormat |
-            Error::AuthFailCtxNotInRequestExtension => {
+            Error::AuthFaileNoAuthTokenCookie
+            | Error::AuthFailTokenWrongFormat
+            | Error::AuthFailCtxNotInRequestExtension => {
                 (StatusCode::FORBIDDEN, ClientError::NO_AUTH)
             }
             Error::TicketDeleteFailIdNotFound { .. } => {
                 (StatusCode::BAD_REQUEST, ClientError::INVALID_PARAMS)
             }
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, ClientError::SERVICE_ERROR)
+            _ => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                ClientError::SERVICE_ERROR,
+            ),
         }
     }
 }
